@@ -1,9 +1,9 @@
 {
   "source": {
-    "type": "command",
-    "command": "tail -f /var/log/app.log",
+    "type": "file",
+    "file": "./test-log.txt",
     "follow": true,
-    "fromBeginning": false
+    "fromBeginning": true
   },
   "filters": {
     "sendPattern": "ERROR|CRITICAL|WARN",

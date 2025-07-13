@@ -34,18 +34,30 @@ auto-logmonitor
 auto-logmonitor
 ```
 
+## 🚀 What's New 
+
+- **Native File Watching:** Uses chokidar for efficient, cross-platform file monitoring (no polling, handles log rotation better).
+- **Memory Pressure Handling:** Log buffer flushes or drops logs if buffer exceeds configured limits, preventing OOM.
+- **Pre-compiled Regex Filtering:** Filtering patterns are compiled once for performance.
+- **Improved Error Handling:** More robust error catching and logging throughout the codebase.
+- **Graceful Shutdown:** Cleans up file watchers, Kafka producers, and flushes logs on exit.
+- **Disk Queue for API Output:** Failed batches are persisted to disk and retried, improving reliability.
+- **Horizontal Scaling:** For extreme log volumes, run multiple instances (e.g., in Docker/K8s).
+
 ## 📋 Features
 
 - ✅ **Simple Setup** - Just edit config.json
 - ✅ **High Performance** - Handles 100s of GB with low memory usage
-- ✅ **Multiple Sources** - Monitor commands, files, or both
-- ✅ **Smart Filtering** - Send only relevant logs
-- ✅ **Batch Processing** - Efficient API calls with compression
+- ✅ **Multiple Sources** - Monitor commands, files (with native watcher), or both
+- ✅ **Smart Filtering** - Send only relevant logs (pre-compiled regex)
+- ✅ **Batch Processing** - Efficient API/Kafka calls with compression and memory pressure flush
 - ✅ **Auto Restart** - Commands restart automatically on failure
 - ✅ **Real-time Alerts** - Immediate critical log alerts
 - ✅ **Kafka Support** - Built-in Kafka producer/consumer
-- ✅ **Environment Variables** - Override config for different environments
+- ✅ **Environment Variables** - Override config for different environments (recommended for secrets)
 - ✅ **Docker Ready** - Perfect for containerized deployments
+- ✅ **Disk Queue** - Reliable API output with disk-based retry
+- ✅ **Graceful Shutdown** - Cleans up resources and flushes logs on exit
 
 ## ⚙️ Configuration Guide
 
@@ -835,3 +847,20 @@ For issues, questions, or contributions:
 ## 📄 License
 
 This project is licensed under the MIT License. 
+
+## ⚠️ Security & Best Practices
+
+- **Do NOT store secrets (API keys, etc.) in config.json.** Use environment variables instead.
+- **The 'command' source uses shell: true.** Only use trusted config files and environment variables to avoid shell injection risks.
+- **Set proper file permissions** on config.json and log files.
+
+## 🚦 Current Limitations & Areas for Contribution
+
+- **No Prometheus/Health Endpoints:** Only console metrics are available. PRs welcome!
+- **No Automated Tests:** Add Jest/Mocha tests for core logic to improve reliability.
+- **No Input Validation:** Config values are not strictly validated; fail fast on invalid input is a good next step.
+- **Shell Injection Risk:** 'command' source uses shell: true for flexibility, but only use trusted configs.
+- **Log Rotation Handling:** Chokidar detects file changes, but explicit log rotation handling can be improved.
+
+**Want to contribute?**
+- Add tests, observability features, or input validation! See CONTRIBUTING.md (or open an issue). 

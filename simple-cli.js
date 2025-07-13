@@ -5,6 +5,8 @@ const path = require('path');
 const { spawn, execSync } = require('child_process');
 const axios = require('axios');
 const { v4: uuidv4 } = require('uuid');
+const KafkaProducer = require('./kafkaProducer');
+const chokidar = require('chokidar');
 
 class SimpleLogMonitor {
     constructor() {
@@ -20,6 +22,14 @@ class SimpleLogMonitor {
             alerts: 0
         };
         this.kafkaStarted = false;
+        // Pre-compiled regex patterns
+        this.sendPatternRegex = null;
+        this.alertPatternRegex = null;
+        this.ignorePatternRegex = null;
+        this.kafkaProducer = null;
+        this.kafkaProducerInitialized = false;
+        this.batchIntervalId = null; // To clear interval on stop
+        this.fileWatcher = null; // To close watcher on stop
     }
 
     async loadConfig() {
@@ -35,6 +45,8 @@ class SimpleLogMonitor {
 
         try {
             this.config = await fs.readJson(configPath);
+            // Pre-compile regex patterns after loading config
+            this.compileRegexPatterns();
             console.log('✅ Configuration loaded successfully');
         } catch (error) {
             console.error('❌ Error loading config.json:', error.message);
@@ -89,6 +101,27 @@ class SimpleLogMonitor {
         };
 
         await fs.writeJson(configPath, defaultConfig, { spaces: 2 });
+    }
+
+    compileRegexPatterns() {
+        try {
+            this.sendPatternRegex = this.config.filters.sendPattern ? new RegExp(this.config.filters.sendPattern) : null;
+        } catch (e) {
+            console.error('❌ Invalid sendPattern regex:', e.message);
+            this.sendPatternRegex = null;
+        }
+        try {
+            this.alertPatternRegex = this.config.filters.alertPattern ? new RegExp(this.config.filters.alertPattern) : null;
+        } catch (e) {
+            console.error('❌ Invalid alertPattern regex:', e.message);
+            this.alertPatternRegex = null;
+        }
+        try {
+            this.ignorePatternRegex = this.config.filters.ignorePattern ? new RegExp(this.config.filters.ignorePattern) : null;
+        } catch (e) {
+            console.error('❌ Invalid ignorePattern regex:', e.message);
+            this.ignorePatternRegex = null;
+        }
     }
 
     async ensureKafka() {
@@ -165,6 +198,22 @@ class SimpleLogMonitor {
 
         // If Kafka is enabled, ensure it is running
         await this.ensureKafka();
+
+        // Initialize KafkaProducer if needed
+        if (this.config.output.type === 'kafka' && this.config.kafka.enabled) {
+            if (!this.kafkaProducer) {
+                this.kafkaProducer = new KafkaProducer();
+            }
+            if (!this.kafkaProducerInitialized) {
+                try {
+                    await this.kafkaProducer.initialize();
+                    this.kafkaProducerInitialized = true;
+                } catch (err) {
+                    console.error('❌ Failed to initialize KafkaProducer:', err.message);
+                    process.exit(1);
+                }
+            }
+        }
 
         console.log('🚀 Starting Auto Log Monitor...');
         console.log(`📊 Source: ${this.config.source.type}`);
@@ -244,29 +293,27 @@ class SimpleLogMonitor {
         }
 
         if (follow) {
-            // Simple file watching using polling for better compatibility
-            this.startFileWatcher(file);
+            // Use chokidar for efficient native file watching
+            this.startChokidarWatcher(file);
         }
     }
 
-    startFileWatcher(filePath) {
+    startChokidarWatcher(filePath) {
         let lastSize = 0;
-        
-        setInterval(async () => {
+        // Initialize lastSize to current file size
+        fs.stat(filePath).then(stats => { lastSize = stats.size; });
+        const watcher = chokidar.watch(filePath, { persistent: true, usePolling: false });
+        watcher.on('change', async (changedPath) => {
             try {
-                const stats = await fs.stat(filePath);
+                const stats = await fs.stat(changedPath);
                 if (stats.size > lastSize) {
-                    const stream = fs.createReadStream(filePath, {
+                    const stream = fs.createReadStream(changedPath, {
                         start: lastSize,
                         end: stats.size - 1,
                         encoding: 'utf8'
                     });
-
                     let buffer = '';
-                    stream.on('data', (chunk) => {
-                        buffer += chunk;
-                    });
-
+                    stream.on('data', (chunk) => { buffer += chunk; });
                     stream.on('end', () => {
                         this.processLogData(buffer);
                         lastSize = stats.size;
@@ -275,7 +322,11 @@ class SimpleLogMonitor {
             } catch (error) {
                 console.error('❌ File watch error:', error.message);
             }
-        }, 1000);
+        });
+        watcher.on('error', (error) => {
+            console.error('❌ Chokidar error:', error.message);
+        });
+        this.fileWatcher = watcher;
     }
 
     processLogData(data) {
@@ -288,21 +339,18 @@ class SimpleLogMonitor {
             this.stats.processed++;
 
             // Check ignore pattern
-            if (this.config.filters.ignorePattern && 
-                new RegExp(this.config.filters.ignorePattern).test(cleanLine)) {
+            if (this.ignorePatternRegex && this.ignorePatternRegex.test(cleanLine)) {
                 continue;
             }
 
             // Check alert pattern
-            if (this.config.filters.alertPattern && 
-                new RegExp(this.config.filters.alertPattern).test(cleanLine)) {
+            if (this.alertPatternRegex && this.alertPatternRegex.test(cleanLine)) {
                 console.log('\x1b[31m%s\x1b[0m', `🚨 ALERT: ${cleanLine}`);
                 this.stats.alerts++;
             }
 
             // Check send pattern
-            if (this.config.filters.sendPattern && 
-                new RegExp(this.config.filters.sendPattern).test(cleanLine)) {
+            if (this.sendPatternRegex && this.sendPatternRegex.test(cleanLine)) {
                 
                 this.logBuffer.push({
                     id: uuidv4(),
@@ -312,9 +360,24 @@ class SimpleLogMonitor {
                         this.config.source.command : this.config.source.file
                 });
 
-                // Check if buffer is full
+                // Flush if buffer is full (batch size)
                 if (this.logBuffer.length >= this.config.output.batchSize) {
-                    this.sendBatch();
+                    try {
+                        this.sendBatch();
+                    } catch (err) {
+                        this.stats.errors++;
+                        console.error('❌ Error sending batch:', err.message);
+                    }
+                }
+                // Memory pressure: flush if buffer is too large
+                if (this.logBuffer.length > this.config.performance.maxQueueSize) {
+                    console.warn('⚠️  Log buffer exceeded maxQueueSize, flushing...');
+                    try {
+                        this.sendBatch();
+                    } catch (err) {
+                        this.stats.errors++;
+                        console.error('❌ Error sending batch under memory pressure:', err.message);
+                    }
                 }
             }
         }
@@ -323,40 +386,45 @@ class SimpleLogMonitor {
     startBatchProcessor() {
         // Use batchMinutes from performance config, convert to milliseconds
         const batchInterval = (this.config.performance?.batchMinutes || 1) * 60 * 1000;
-        
-        setInterval(() => {
+        this.batchIntervalId = setInterval(() => {
             if (this.logBuffer.length > 0) {
-                this.sendBatch();
+                try {
+                    this.sendBatch();
+                } catch (err) {
+                    this.stats.errors++;
+                    console.error('❌ Error sending batch:', err.message);
+                }
             }
         }, batchInterval);
     }
 
     async sendBatch() {
         if (this.logBuffer.length === 0) return;
-
         const batch = [...this.logBuffer];
-        this.logBuffer = [];
-
+        // Clear logBuffer references for memory management
+        this.logBuffer.length = 0;
         try {
             if (this.config.output.type === 'api') {
                 await this.sendToApi(batch);
             } else if (this.config.output.type === 'kafka' && this.config.kafka.enabled) {
                 await this.sendToKafka(batch);
             }
-
             this.stats.sent += batch.length;
             console.log(`📤 Sent batch of ${batch.length} logs`);
-            
             // Print metrics when batch is sent
             this.printBatchMetrics();
         } catch (error) {
             this.stats.errors++;
             console.error('❌ Error sending batch:', error.message);
-            
             // Retry logic
             if (this.config.performance.retryAttempts > 0) {
                 setTimeout(() => {
-                    this.logBuffer.unshift(...batch);
+                    // Only requeue if buffer is not already too large
+                    if (this.logBuffer.length < this.config.performance.maxQueueSize) {
+                        this.logBuffer.unshift(...batch);
+                    } else {
+                        console.error('❌ Dropping batch due to persistent memory pressure.');
+                    }
                 }, this.config.performance.retryDelay);
             }
         }
@@ -386,9 +454,21 @@ class SimpleLogMonitor {
     }
 
     async sendToKafka(batch) {
-        // Simple Kafka implementation without external dependencies
-        // This would require kafkajs to be bundled or use a different approach
-        console.log('⚠️  Kafka output not implemented in simple mode');
+        if (!this.kafkaProducerInitialized) {
+            console.error('❌ KafkaProducer not initialized. Cannot send batch.');
+            return;
+        }
+        try {
+            const result = await this.kafkaProducer.sendLogBatch(batch);
+            if (result.success) {
+                console.log(`✅ Kafka: Sent batch ${result.messageId} to partition ${result.partition}, offset ${result.offset}`);
+            } else {
+                console.error(`❌ Kafka: Failed to send batch ${result.messageId}: ${result.error}`);
+            }
+        } catch (err) {
+            this.stats.errors++;
+            console.error('❌ Error sending batch to Kafka:', err.message);
+        }
     }
 
     printBatchMetrics() {
@@ -432,11 +512,34 @@ class SimpleLogMonitor {
             this.process = null;
         }
 
+        // Stop file watcher if running
+        if (this.fileWatcher) {
+            try {
+                await this.fileWatcher.close();
+            } catch (err) {
+                console.error('⚠️  Error closing file watcher:', err.message);
+            }
+            this.fileWatcher = null;
+        }
         // Send remaining logs
         if (this.logBuffer.length > 0) {
-            await this.sendBatch();
+            try {
+                await this.sendBatch();
+            } catch (err) {
+                this.stats.errors++;
+                console.error('❌ Error sending remaining batch:', err.message);
+            }
         }
 
+        // Shutdown KafkaProducer if initialized
+        if (this.kafkaProducerInitialized && this.kafkaProducer) {
+            try {
+                await this.kafkaProducer.disconnect();
+                this.kafkaProducerInitialized = false;
+            } catch (err) {
+                console.error('⚠️  Error disconnecting KafkaProducer:', err.message);
+            }
+        }
         // Optionally stop Kafka
         if (this.kafkaStarted) {
             try {

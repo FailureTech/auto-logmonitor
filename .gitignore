@@ -1,0 +1,8 @@
+node_modules/
+log-disk-queue/
+*.log
+*.tmp
+.DS_Store
+config.json
+test-log.txt
+.env

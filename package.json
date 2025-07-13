@@ -1,6 +1,6 @@
 {
   "name": "auto-logmonitor",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "A powerful, lightweight CLI tool for monitoring logs and sending them to APIs or Kafka. Perfect for production environments with high-volume log processing.",
   "main": "simple-cli.js",
   "bin": {
@@ -31,6 +31,7 @@
   },
   "dependencies": {
     "axios": "^1.10.0",
+    "chokidar": "^4.0.3",
     "fs-extra": "^11.3.0",
     "uuid": "^11.1.0"
   },
