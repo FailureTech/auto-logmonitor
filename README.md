@@ -856,11 +856,7 @@ This project is licensed under the MIT License.
 
 ## 🚦 Current Limitations & Areas for Contribution
 
-- **No Prometheus/Health Endpoints:** Only console metrics are available. PRs welcome!
+- **No Prometheus/Health Endpoints:** Only console metrics are available.
 - **No Automated Tests:** Add Jest/Mocha tests for core logic to improve reliability.
 - **No Input Validation:** Config values are not strictly validated; fail fast on invalid input is a good next step.
-- **Shell Injection Risk:** 'command' source uses shell: true for flexibility, but only use trusted configs.
-- **Log Rotation Handling:** Chokidar detects file changes, but explicit log rotation handling can be improved.
-
-**Want to contribute?**
-- Add tests, observability features, or input validation! See CONTRIBUTING.md (or open an issue). 
+- **Shell Injection Risk:** 'command' source uses shell: true for flexibility, but only use trusted configs. 
