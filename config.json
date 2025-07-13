@@ -1,0 +1,47 @@
+{
+  "source": {
+    "type": "command",
+    "command": "tail -f /var/log/app.log",
+    "follow": true,
+    "fromBeginning": false
+  },
+  "filters": {
+    "sendPattern": "ERROR|CRITICAL|WARN",
+    "alertPattern": "CRITICAL|FATAL",
+    "ignorePattern": ""
+  },
+  "output": {
+    "type": "api",
+    "apiEndpoint": "https://your-api.com/logs",
+    "apiKey": "your-api-key",
+    "batchSize": 100,
+    "batchTimeout": 5000
+  },
+  "kafka": {
+    "enabled": false,
+    "brokers": ["localhost:9092"],
+    "topic": "log-streams",
+    "clientId": "auto-logmonitor",
+    "maxRetries": 5,
+    "timeout": 30000,
+    "maxPendingMessages": 1000,
+    "consumerFilter": ""
+  },
+  "performance": {
+    "maxMemoryMB": 512,
+    "maxQueueSize": 10000,
+    "compression": true,
+    "retryAttempts": 3,
+    "retryDelay": 1000,
+    "queueDir": "./log-disk-queue",
+    "concurrency": 10,
+    "apiRateLimit": 10,
+    "batchMinutes": 1
+  },
+  "logging": {
+    "level": "info",
+    "file": "auto-logmonitor.log",
+    "maxSize": "10MB",
+    "maxFiles": 5
+  }
+} 

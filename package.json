@@ -1,0 +1,44 @@
+{
+  "name": "auto-logmonitor",
+  "version": "1.0.1",
+  "description": "A powerful, lightweight CLI tool for monitoring logs and sending them to APIs or Kafka. Perfect for production environments with high-volume log processing.",
+  "main": "simple-cli.js",
+  "bin": {
+    "auto-logmonitor": "simple-cli.js"
+  },
+  "scripts": {
+    "start": "node simple-cli.js",
+    "dev": "nodemon simple-cli.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [
+    "cli",
+    "log",
+    "monitor",
+    "alerts",
+    "file-watcher",
+    "kafka",
+    "logging",
+    "devops",
+    "production",
+    "real-time",
+    "batch-processing"
+  ],
+  "author": "Auto Log Monitor Team",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  },
+  "dependencies": {
+    "axios": "^1.10.0",
+    "fs-extra": "^11.3.0",
+    "uuid": "^11.1.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
+  },
+  "optionalDependencies": {
+    "kafkajs": "^2.2.4"
+  },
+  "type": "commonjs"
+}
