@@ -373,7 +373,7 @@ class SimpleLogMonitor {
                 if (this.logBuffer.length > this.config.performance.maxQueueSize) {
                     console.warn('⚠️  Log buffer exceeded maxQueueSize, flushing...');
                     try {
-                        this.sendBatch();
+                    this.sendBatch();
                     } catch (err) {
                         this.stats.errors++;
                         console.error('❌ Error sending batch under memory pressure:', err.message);
@@ -389,7 +389,7 @@ class SimpleLogMonitor {
         this.batchIntervalId = setInterval(() => {
             if (this.logBuffer.length > 0) {
                 try {
-                    this.sendBatch();
+                this.sendBatch();
                 } catch (err) {
                     this.stats.errors++;
                     console.error('❌ Error sending batch:', err.message);
@@ -421,7 +421,7 @@ class SimpleLogMonitor {
                 setTimeout(() => {
                     // Only requeue if buffer is not already too large
                     if (this.logBuffer.length < this.config.performance.maxQueueSize) {
-                        this.logBuffer.unshift(...batch);
+                    this.logBuffer.unshift(...batch);
                     } else {
                         console.error('❌ Dropping batch due to persistent memory pressure.');
                     }
@@ -524,7 +524,7 @@ class SimpleLogMonitor {
         // Send remaining logs
         if (this.logBuffer.length > 0) {
             try {
-                await this.sendBatch();
+            await this.sendBatch();
             } catch (err) {
                 this.stats.errors++;
                 console.error('❌ Error sending remaining batch:', err.message);

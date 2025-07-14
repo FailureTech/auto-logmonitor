@@ -63,58 +63,65 @@ auto-logmonitor
 
 The tool creates a `config.json` file in your current directory. This is the **only file you need to edit** to configure everything.
 
-### 📁 Complete Configuration Structure
+### 🔑 config.json Key Reference
 
-```json
-{
-  "source": {
-    "type": "command",
-    "command": "tail -f /var/log/app.log",
-    "file": null,
-    "follow": true,
-    "fromBeginning": false
-  },
-  "filters": {
-    "sendPattern": "ERROR|CRITICAL|WARN",
-    "alertPattern": "CRITICAL|FATAL",
-    "ignorePattern": ""
-  },
-  "output": {
-    "type": "api",
-    "apiEndpoint": "https://your-api.com/logs",
-    "apiKey": "your-api-key",
-    "batchSize": 100,
-    "batchTimeout": 5000
-  },
-  "kafka": {
-    "enabled": false,
-    "brokers": ["localhost:9092"],
-    "topic": "log-streams",
-    "clientId": "auto-logmonitor",
-    "maxRetries": 5,
-    "timeout": 30000,
-    "maxPendingMessages": 1000,
-    "consumerFilter": ""
-  },
-  "performance": {
-    "maxMemoryMB": 512,
-    "maxQueueSize": 10000,
-    "compression": true,
-    "retryAttempts": 3,
-    "retryDelay": 1000,
-    "queueDir": "./log-disk-queue",
-    "concurrency": 10,
-    "apiRateLimit": 10,
-    "batchMinutes": 1
-  },
-  "logging": {
-    "level": "info",
-    "file": "auto-logmonitor.log",
-    "maxSize": "10MB",
-    "maxFiles": 5
-  }
-}
-```
+#### **source** (Where to get logs from)
+| Key            | Type     | Example/Default                | Description                                                      |
+|----------------|----------|-------------------------------|------------------------------------------------------------------|
+| type           | string   | "command" or "file"           | Source type: command output or file monitoring                    |
+| command        | string   | "tail -f /var/log/app.log"    | Command to run (if type is command)                              |
+| file           | string   | "/var/log/app.log"            | File path to monitor (if type is file)                            |
+| follow         | boolean  | true                          | Follow file/command output in real time                           |
+| fromBeginning  | boolean  | false                         | Start from beginning of file (if type is file)                    |
+
+#### **filters** (Log filtering)
+| Key           | Type    | Example/Default                | Description                                                      |
+|---------------|---------|-------------------------------|------------------------------------------------------------------|
+| sendPattern   | string  | "ERROR|CRITICAL|WARN"         | Regex: logs to send to output                                    |
+| alertPattern  | string  | "CRITICAL|FATAL"              | Regex: logs to alert in console                                  |
+| ignorePattern | string  | "DEBUG|TRACE"                  | Regex: logs to ignore completely                                 |
+
+#### **output** (Where to send logs)
+| Key         | Type    | Example/Default                | Description                                                      |
+|-------------|---------|-------------------------------|------------------------------------------------------------------|
+| type        | string  | "api" or "kafka"              | Output type: API or Kafka                                        |
+| apiEndpoint | string  | "https://your-api.com/logs"   | API endpoint URL (if type is api)                                |
+| apiKey      | string  | "your-api-key"                | API key for authentication (if type is api)                      |
+| batchSize   | number  | 100                            | Max log lines per batch before sending                           |
+| batchTimeout| number  | 5000                           | Max time (ms) to wait before sending a batch                     |
+
+#### **kafka** (Kafka output settings)
+| Key                | Type      | Example/Default                | Description                                                      |
+|--------------------|-----------|-------------------------------|------------------------------------------------------------------|
+| enabled            | boolean   | false                         | Enable Kafka output                                              |
+| brokers            | array     | ["localhost:9092"]            | List of Kafka broker addresses                                   |
+| topic              | string    | "log-streams"                 | Kafka topic to send logs to                                      |
+| clientId           | string    | "auto-logmonitor"             | Kafka client identifier                                          |
+| maxRetries         | number    | 5                             | Max retries for failed sends                                     |
+| timeout            | number    | 30000                         | Kafka send timeout (ms)                                          |
+| maxPendingMessages | number    | 1000                          | Max pending messages in Kafka producer                           |
+| consumerFilter     | string    | ""                            | Regex: filter for Kafka consumer                                 |
+
+#### **performance** (Resource and reliability tuning)
+| Key           | Type    | Example/Default                | Description                                                      |
+|---------------|---------|-------------------------------|------------------------------------------------------------------|
+| maxMemoryMB   | number  | 512                            | Max memory usage before warning/trim (MB)                        |
+| maxQueueSize  | number  | 10000                          | Max log lines in buffer before forced flush/drop                 |
+| compression   | boolean | true                           | Enable gzip compression for batches                              |
+| retryAttempts | number  | 3                              | Number of retries for failed batches                             |
+| retryDelay    | number  | 1000                           | Delay (ms) between retries                                      |
+| queueDir      | string  | "./log-disk-queue"             | Directory for disk-based queue                                   |
+| concurrency   | number  | 10                             | Number of concurrent send operations                             |
+| apiRateLimit  | number  | 10                             | Max API calls per second                                         |
+| batchMinutes  | number  | 1                              | Time interval (minutes) for batch flush                          |
+
+#### **logging** (Log file settings)
+| Key        | Type    | Example/Default                | Description                                                      |
+|------------|---------|-------------------------------|------------------------------------------------------------------|
+| level      | string  | "info"                        | Log level: debug, info, warn, error                              |
+| file       | string  | "auto-logmonitor.log"         | Log file name                                                    |
+| maxSize    | string  | "10MB"                        | Max log file size before rotation                                |
+| maxFiles   | number  | 5                             | Max number of rotated log files to keep                          |
 
 ## 🔧 Configuration Sections Explained
 
@@ -379,58 +386,30 @@ The `source.type` field determines where the tool gets logs from. There are two 
 }
 ```
 
-#### Memory Management
-- **maxMemoryMB**: Maximum memory usage (default: 512MB)
-- **maxQueueSize**: Maximum items in processing queue (default: 10,000)
+## ⚡ Performance Options Explained
 
-#### Processing Settings
-- **concurrency**: Number of concurrent operations (default: 10)
-- **apiRateLimit**: API calls per second (default: 10)
-- **batchMinutes**: How often to process batches (default: 1 minute)
+| Option         | What it Controls                        | Unit/Type         | Default      | What is “item”?         |
+|----------------|----------------------------------------|-------------------|--------------|-------------------------|
+| maxMemoryMB    | Max process memory before warning/trim  | Megabytes (MB)    | 512          | N/A                     |
+| maxQueueSize   | Max log lines in buffer before flush    | Log lines         | 10,000       | **Log lines**           |
+| batchSize      | Max log lines per batch before sending  | Log lines         | 100          | **Log lines**           |
+| compression    | Compress batches before sending         | Boolean           | true         | N/A                     |
+| retryAttempts  | Number of retries for failed batches    | Integer           | 3            | N/A                     |
+| retryDelay     | Delay between retries                   | Milliseconds (ms) | 1000         | N/A                     |
+| queueDir       | Disk queue directory                    | Path (string)     | ./log-disk-queue | N/A                  |
+| concurrency    | Concurrent send operations              | Integer           | 10           | N/A                     |
+| apiRateLimit   | Max API calls per second                | Integer           | 10           | N/A                     |
+| batchMinutes   | Time interval for batch flush           | Minutes           | 1            | N/A                     |
 
-#### Reliability Settings
-- **retryAttempts**: Number of retry attempts (default: 3)
-- **retryDelay**: Delay between retries in milliseconds (default: 1000)
-- **compression**: Enable compression for network efficiency (default: true)
-
-#### Metrics and Monitoring
-- **batchMinutes**: Controls both batch processing interval and metrics output frequency
-- Metrics are displayed **only when batches are sent** (not continuously)
-- Metrics include: processed logs, sent logs, errors, alerts, buffer size, memory usage, and uptime
-- Memory warnings are still shown every 30 seconds if memory usage is high
-
-**Performance Tuning Examples:**
-
-```json
-// Low-resource environment
-{
-  "maxMemoryMB": 256,
-  "maxQueueSize": 5000,
-  "concurrency": 5,
-  "apiRateLimit": 5,
-  "batchSize": 50
-}
-
-// High-performance environment
-{
-  "maxMemoryMB": 2048,
-  "maxQueueSize": 50000,
-  "concurrency": 20,
-  "apiRateLimit": 50,
-  "batchSize": 500
-}
-
-// Production environment
-{
-  "maxMemoryMB": 1024,
-  "maxQueueSize": 25000,
-  "concurrency": 15,
-  "apiRateLimit": 25,
-  "batchSize": 200,
-  "retryAttempts": 5,
-  "retryDelay": 2000
-}
-```
+**Notes:**
+- **batchSize**: The maximum number of log lines to collect before sending a batch to the API/Kafka. When this number is reached, the batch is sent immediately.
+- **maxQueueSize**: This is the maximum number of log lines that can be held in memory before a batch is forced to flush or, if still too large, dropped.
+- **maxMemoryMB**: If memory usage exceeds this, the CLI will warn and may trim the buffer to avoid OOM errors.
+- **compression**: Enables gzip compression for batches (if supported by the output).
+- **retryAttempts/retryDelay**: Control how many times and how often failed batches are retried.
+- **queueDir**: Where failed batches are stored for retry (disk-based queue).
+- **concurrency/apiRateLimit**: Control throughput and prevent overloading the API.
+- **batchMinutes**: Ensures logs are sent regularly, even during low log volume periods.
 
 ## 🌍 Environment Variables
 
@@ -860,3 +839,97 @@ This project is licensed under the MIT License.
 - **No Automated Tests:** Add Jest/Mocha tests for core logic to improve reliability.
 - **No Input Validation:** Config values are not strictly validated; fail fast on invalid input is a good next step.
 - **Shell Injection Risk:** 'command' source uses shell: true for flexibility, but only use trusted configs. 
+
+
+---
+
+## 🔄 How It Works
+
+1. **Log Source:** Reads logs from a file or command output.
+2. **Filtering:** Applies regex filters to decide which logs to send, alert, or ignore.
+3. **Batching:** Collects logs into batches based on size or time.
+4. **Output:** Sends batches to an API or Kafka, with retries and disk queue for reliability.
+5. **Monitoring:** Prints metrics and alerts to the console.
+
+**Flow Diagram:**
+```
+[Source: File/Command] → [Filtering] → [Batching] → [Output: API/Kafka]
+                                         ↓
+                                 [Disk Queue/Retry]
+                                         ↓
+                                   [Monitoring/Alerts]
+```
+
+---
+
+## ❓ FAQ
+
+**Q: How do I send all logs, regardless of content?**  
+A: Set `"sendPattern": ".*"` in your config.
+
+**Q: How do I ignore certain log lines?**  
+A: Use the `ignorePattern` key with a regex matching lines to ignore.
+
+**Q: What happens if the API/Kafka is down?**  
+A: Logs are queued on disk and retried until successful or max retries are reached.
+
+**Q: Can I use both API and Kafka at the same time?**  
+A: No, choose one output type per config. Run multiple instances if you need both.
+
+**Q: How do I rotate logs?**  
+A: Use the `maxSize` and `maxFiles` options in the `logging` section.
+
+**Q: What does batchSize mean?**  
+A: The maximum number of log lines to collect before sending a batch to the API/Kafka.
+
+**Q: Can I run this in Docker or Kubernetes?**  
+A: Yes! See the Docker and Kubernetes sections above for examples.
+
+---
+
+## 🛠️ Troubleshooting
+
+- **Permission Denied:**
+  - Ensure you have read access to the log file or command output.
+  - Use `sudo` if necessary, or adjust file permissions.
+- **API Connection Failed:**
+  - Check your API endpoint and network connectivity.
+  - Verify your API key is correct and not expired.
+- **Kafka Connection Failed:**
+  - Ensure Kafka is running and accessible at the specified broker address.
+  - Check topic names and permissions.
+- **High Memory Usage:**
+  - Lower `maxMemoryMB`, `maxQueueSize`, or `batchSize` in your config.
+- **Slow Processing:**
+  - Increase `concurrency`, `apiRateLimit`, or `batchSize`.
+- **No logs are being sent:**
+  - Check your `sendPattern` and `ignorePattern` regexes.
+  - Make sure your source is producing logs.
+
+---
+
+## 🏆 Best Practices
+
+- Use environment variables for secrets (API keys, etc.).
+- Set appropriate `batchSize` and `batchMinutes` for your log volume.
+- Monitor memory usage and adjust `maxMemoryMB` and `maxQueueSize` as needed.
+- Use Docker or Kubernetes for easy deployment and scaling.
+- Regularly check your log files and disk queue for issues.
+- Use HTTPS for API endpoints and secure your Kafka cluster.
+- Test your regex patterns before deploying to production.
+- Keep your dependencies up to date.
+
+---
+
+## 📖 Glossary
+
+- **Batch:** A group of log lines sent together to the output (API/Kafka).
+- **Log Line:** A single line of log data from your source.
+- **Flush:** Sending the current batch of logs immediately.
+- **Disk Queue:** Temporary storage for logs that couldn't be sent immediately.
+- **Regex:** A regular expression used for filtering log lines.
+- **Source:** Where logs are read from (file or command).
+- **Output:** Where logs are sent (API or Kafka).
+- **Alert:** A log line that matches the `alertPattern` and is shown in the console.
+
+
