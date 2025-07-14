@@ -41,5 +41,13 @@
   "optionalDependencies": {
     "kafkajs": "^2.2.4"
   },
-  "type": "commonjs"
+  "type": "commonjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/FailureTech/auto-logmonitor.git"
+  },
+  "bugs": {
+    "url": "https://github.com/FailureTech/auto-logmonitor/issues"
+  },
+  "homepage": "https://github.com/FailureTech/auto-logmonitor#readme"
 }
