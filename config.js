@@ -88,7 +88,17 @@ class ConfigLoader {
             logLevel: getValue('logging.level', 'LOG_LEVEL', 'info'),
             logFile: getValue('logging.file', 'LOG_FILE', 'auto-logmonitor.log'),
             logMaxSize: getValue('logging.maxSize', 'LOG_MAX_SIZE', '10MB'),
-            logMaxFiles: getValue('logging.maxFiles', 'LOG_MAX_FILES', 5, parseInt)
+            logMaxFiles: getValue('logging.maxFiles', 'LOG_MAX_FILES', 5, parseInt),
+
+            // SMTP alert settings
+            smtpConfig: {
+                host: getValue('smtp.host', 'SMTP_HOST', ''),
+                port: getValue('smtp.port', 'SMTP_PORT', 587, parseInt),
+                secure: getValue('smtp.secure', 'SMTP_SECURE', false, v => v === 'true' || v === true),
+                user: getValue('smtp.user', 'SMTP_USER', ''),
+                pass: getValue('smtp.pass', 'SMTP_PASS', ''),
+                recipients: getValue('smtp.recipients', 'SMTP_RECIPIENTS', [], v => Array.isArray(v) ? v : v.split(',').map(e => e.trim()))
+            }
         };
 
         return transformed;

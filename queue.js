@@ -4,6 +4,7 @@ const path = require('path');
 const axios = require('axios');
 const { loadConfig } = require('./config');
 const { logSuccess, logFailure, logRetry, updateQueueSize } = require('./metrics');
+const { Worker } = require('worker_threads');
 
 class DiskPersistedQueue {
     constructor() {
@@ -12,6 +13,7 @@ class DiskPersistedQueue {
         this.pendingRetries = new Set();
         this.retryCounts = new Map();
         this.healthy = true;
+        this.pendingRetryFiles = new Set();
     }
 
     async initialize() {
@@ -90,68 +92,104 @@ class DiskPersistedQueue {
         }, 5000);
     }
 
+    async enqueueBatch(batchData, fileName) {
+        // fileName should be unique, e.g. `${Date.now()}_batch.json` or similar
+        if (this.config.compression && !fileName.endsWith('.gz')) {
+            fileName += '.gz';
+        }
+        const filePath = path.join(this.config.queueDir, fileName);
+        if (this.config.compression) {
+            // Compress before writing to disk
+            const compressed = await new Promise((resolve, reject) => {
+                const worker = new Worker(path.join(__dirname, 'compressWorker.js'));
+                worker.postMessage({ logData: batchData });
+                worker.on('message', (msg) => {
+                    if (msg.success && msg.compressed) {
+                        resolve(Buffer.from(msg.compressed));
+                    } else {
+                        reject(new Error(msg.error || 'Compression failed'));
+                    }
+                    worker.terminate();
+                });
+                worker.on('error', reject);
+                worker.on('exit', (code) => {
+                    if (code !== 0) reject(new Error(`Worker stopped with exit code ${code}`));
+                });
+            });
+            await fs.writeFile(filePath, compressed);
+            return filePath;
+        } else {
+            await fs.writeFile(filePath, batchData);
+            return filePath;
+        }
+    }
+
     async processTask(filePath) {
         try {
             this.pendingRetries.add(filePath);
             updateQueueSize(this.length());
 
-            const fileData = await fs.readFile(filePath);
-            const fileSizeMB = (fileData.length / 1024 / 1024).toFixed(2);
+            let sendData;
+            let sendHeaders = {
+                'Content-Type': 'application/json',
+                'timeout': this.config.timeout || 5000
+            };
 
-            console.log(`[QUEUE] Sending ${fileSizeMB}MB file: ${path.basename(filePath)}`);
+            if (filePath.endsWith('.json.gz')) {
+                // Decompress before sending
+                const compressed = await fs.readFile(filePath);
+                sendData = require('zlib').gunzipSync(compressed);
+                sendHeaders['Content-Encoding'] = 'identity';
+            } else if (filePath.endsWith('.json')) {
+                sendData = await fs.readFile(filePath);
+                sendHeaders['Content-Encoding'] = 'identity';
+            } else {
+                console.warn(`[QUEUE] Skipping unknown file type: ${filePath}`);
+                await fs.unlink(filePath);
+                return;
+            }
 
-            await axios.post(this.config.apiEndpoint, fileData, {
-                headers: {
-                    'Content-Encoding': 'gzip',
-                    'Content-Type': 'application/octet-stream'
-                },
-                timeout: 5000
+            console.log(`[QUEUE] Sending file: ${filePath}, decompressed: ${filePath.endsWith('.json.gz')}`);
+
+            await axios.post(this.config.apiEndpoint, sendData, {
+                headers: sendHeaders,
+                timeout: this.config.timeout || 5000
             });
 
             logSuccess();
             await fs.unlink(filePath);
             this.retryCounts.delete(filePath);
-            console.log(`[QUEUE] Success: ${path.basename(filePath)}`);
+            this.pendingRetryFiles.delete(filePath);
         } catch (err) {
             logFailure();
-            logRetry();
-
-            const retries = (this.retryCounts.get(filePath) || 0) + 1;
-            this.retryCounts.set(filePath, retries);
-
-            const isConnectionError = [
-                'ECONNREFUSED', 'ETIMEDOUT',
-                'ENETUNREACH', 'ECONNRESET'
-            ].includes(err.code);
-
-            const retryAfter = isConnectionError
-                ? 30000 // 30s for connection issues
-                : Math.min(1000 * Math.pow(2, retries), 30000);
-
-            console.error(
-                `[QUEUE] Error (${err.code || err.response?.status || 'unknown'}):`,
-                `${path.basename(filePath)} -`,
-                `Attempt ${retries}/${this.config.retryAttempts || 5},`,
-                `Next try in ${retryAfter/1000}s`
-            );
-
-            if (retries >= (this.config.retryAttempts || 5)) {
-                console.error(`[QUEUE] Max retries reached for ${path.basename(filePath)} - moving to DLQ`);
-                const dlqPath = path.join(
-                    this.config.queueDir,
-                    'dead-letter',
-                    `${Date.now()}_${path.basename(filePath)}`
-                );
-                await fs.move(filePath, dlqPath);
-                this.retryCounts.delete(filePath);
+            this.retryCounts.set(filePath, (this.retryCounts.get(filePath) || 0) + 1);
+            if (this.retryCounts.get(filePath) < this.config.retryAttempts) {
+                // Add to pendingRetryFiles for next batch
+                this.pendingRetryFiles.add(filePath);
+                console.warn(`[QUEUE] Will retry file on next batch: ${filePath}`);
             } else {
-                setTimeout(() => {
-                    this.queue.add(() => this.processTask(filePath));
-                }, retryAfter);
+                // Move to dead-letter queue
+                const fs = require('fs-extra');
+                const path = require('path');
+                const dlqDir = path.join(this.config.queueDir, 'dead-letter');
+                await fs.ensureDir(dlqDir);
+                const dlqPath = path.join(dlqDir, path.basename(filePath));
+                await fs.move(filePath, dlqPath, { overwrite: true });
+                console.error(`[QUEUE] Moved file to dead-letter queue after ${this.config.retryAttempts} attempts: ${dlqPath}`);
+                this.retryCounts.delete(filePath);
+                this.pendingRetryFiles.delete(filePath);
             }
         } finally {
             this.pendingRetries.delete(filePath);
             updateQueueSize(this.length());
+        }
+    }
+
+    async processPendingRetries() {
+        // Retry all files in pendingRetryFiles
+        const files = Array.from(this.pendingRetryFiles);
+        for (const file of files) {
+            await this.processTask(file);
         }
     }
 
@@ -182,9 +220,9 @@ class DiskPersistedQueue {
             healthy: this.healthy,
             active: this.queue.size,
             inProgress: this.queue.pending,
-            waitingRetry: this.pendingRetries.size,
+            waitingRetry: this.pendingRetryFiles.size,
             retryItems: Array.from(this.pendingRetries).map(f => ({
-                file: path.basename(f),
+                file: require('path').basename(f),
                 retries: this.retryCounts.get(f) || 0
             })),
             rateLimit: `${this.config.apiRateLimit}/sec`,

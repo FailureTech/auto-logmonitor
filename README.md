@@ -1,6 +1,17 @@
-# Auto Log Monitor - Simple CLI Tool
+# Auto Log Monitor - Advanced, Developer-Friendly CLI
 
-A powerful, lightweight CLI tool for monitoring logs and sending them to your API or Kafka. Perfect for production environments with high-volume log processing.
+Auto Log Monitor is a robust, high-performance CLI tool for real-time log monitoring, alerting, and forwarding to APIs or Kafka—**designed especially for developers**. You get production-grade reliability and features without needing to be an SRE, DevOps, or infrastructure expert.
+
+- **Zero DevOps required:** Simple config file or environment variables—no deep infra knowledge needed
+- **Multiple log sources:** Monitor files or any command/process output (e.g., tail, docker logs, journalctl)
+- **Smart filtering:** Regex-based filtering, alerting, and ignore patterns
+- **Batching & reliability:** Efficient batch processing, disk-based queue with optional compression, and a dead-letter queue for failed batches. If a batch fails to send after all `retryAttempts`, it is automatically moved to the dead-letter queue for inspection or manual reprocessing.
+- **Alerting:** SMTP email alerts for critical log events, configurable via file or environment variables
+- **Metrics & observability:** Built-in metrics for queue size, retries, memory, and more
+- **Production ready:** Handles log rotation, memory pressure, and auto-restarts sources on failure
+- **Easy deployment:** Native Docker and Kubernetes support, but works great locally or in CI too
+
+**Perfect for developers who want powerful log shipping and alerting—without the hassle of learning DevOps or SRE.**
 
 ## 🚀 Quick Start
 
@@ -464,6 +475,89 @@ auto-logmonitor
 | **Logging** | `LOG_LEVEL` | Log level | `"info"` |
 | | `LOG_FILE` | Log file path | `"auto-logmonitor.log"` |
 
+## SMTP Alert Configuration (Environment Variables)
+
+To enable email alerts, set the following environment variables before running the CLI:
+
+| Variable           | Description                | Example                        |
+|--------------------|---------------------------|---------------------------------|
+| SMTP_HOST          | SMTP server host           | smtp.gmail.com                 |
+| SMTP_PORT          | SMTP server port           | 587                            |
+| SMTP_SECURE        | Use TLS/SSL (true/false)   | false                          |
+| SMTP_USER          | SMTP username/email        | your@email.com                 |
+| SMTP_PASS          | SMTP password/app password | yourpassword                   |
+| SMTP_RECIPIENTS    | Comma-separated emails     | user1@email.com,user2@email.com|
+
+**Example:**
+```bash
+export SMTP_HOST="smtp.gmail.com"
+export SMTP_PORT=587
+export SMTP_SECURE=false
+export SMTP_USER="your@email.com"
+export SMTP_PASS="yourapppassword"
+export SMTP_RECIPIENTS="user1@email.com,user2@email.com"
+node simple-cli.js
+```
+
+If both config.json and environment variables are set, environment variables take precedence.
+
+## 📧 SMTP Email Alert Feature
+
+Auto LogMonitor can send alert emails when a log line matches the alert pattern. You can configure SMTP settings using either `config.json` or environment variables.
+
+### Option 1: Configure via `config.json`
+
+Add or update the `smtp` section in your `config.json`:
+
+```json
+"smtp": {
+  "host": "smtp.gmail.com",
+  "port": 587,
+  "secure": false,
+  "user": "your@email.com",
+  "pass": "yourapppassword",
+  "recipients": ["recipient1@email.com", "recipient2@email.com"]
+}
+```
+- `host`: SMTP server hostname
+- `port`: SMTP server port (usually 587 for TLS, 465 for SSL)
+- `secure`: `true` for SSL, `false` for TLS
+- `user`: SMTP username/email
+- `pass`: SMTP password or app password
+- `recipients`: Array of recipient email addresses
+
+### Option 2: Configure via Environment Variables
+
+Set the following environment variables (e.g., in a `.env` file or via `export`):
+
+| Variable           | Description                | Example                        |
+|--------------------|---------------------------|---------------------------------|
+| SMTP_HOST          | SMTP server host           | smtp.gmail.com                 |
+| SMTP_PORT          | SMTP server port           | 587                            |
+| SMTP_SECURE        | Use TLS/SSL (true/false)   | false                          |
+| SMTP_USER          | SMTP username/email        | your@email.com                 |
+| SMTP_PASS          | SMTP password/app password | yourapppassword                |
+| SMTP_RECIPIENTS    | Comma-separated emails     | user1@email.com,user2@email.com|
+
+**Example .env:**
+```env
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_SECURE=false
+SMTP_USER=your@email.com
+SMTP_PASS=yourapppassword
+SMTP_RECIPIENTS=recipient1@email.com,recipient2@email.com
+```
+
+**Note:** If both config.json and environment variables are set, environment variables take precedence.
+
+### How it works
+- When a log line matches the `alertPattern`, an email is sent to all configured recipients.
+- The email uses a styled HTML template for easy reading.
+- You will see `📧 Alert email sent.` in the CLI output for each alert email sent.
+
+---
+
 ## 🐳 Docker Deployment
 
 ### Dockerfile Example
@@ -859,6 +953,51 @@ This project is licensed under the MIT License.
                                          ↓
                                    [Monitoring/Alerts]
 ```
+
+---
+
+## 🗜️ Working with Compressed Queue Files
+
+If you enable `compression: true` in your config, queued log batches will be stored as `.gz` files (gzip-compressed) on disk **for efficient storage and retry**. 
+
+> **Note:** Data sent over the API or Kafka is always uncompressed. The system automatically decompresses batches before sending, so your API or Kafka consumer always receives raw JSON.
+
+### How to decompress a .gz file (for inspection or recovery)
+
+**Using the command line (gzip):**
+```bash
+gzip -d /path/to/your/queue/file.gz
+# This will produce /path/to/your/queue/file (uncompressed)
+```
+
+**Or, to view without extracting:**
+```bash
+gzip -dc /path/to/your/queue/file.gz | less
+```
+
+**Using Node.js:**
+```js
+const fs = require('fs');
+const zlib = require('zlib');
+
+const compressed = fs.readFileSync('file.gz');
+const uncompressed = zlib.gunzipSync(compressed);
+console.log(uncompressed.toString());
+```
+
+- All queued files with a `.gz` extension are gzip-compressed.
+- You must decompress them before manual inspection or reprocessing.
+- When the queue is running, it will automatically handle decompression for sending if needed.
+
+---
+
+## 📨 Dead-Letter Queue
+
+If a log batch fails to send after the configured number of `retryAttempts`, it is automatically moved to the **dead-letter queue** (`log-disk-queue/dead-letter/`).
+
+- This ensures no data is lost, even if repeated delivery attempts fail.
+- You can inspect or manually reprocess these failed batches as needed.
+- Dead-letter files are stored in the same format as regular queue files (compressed if enabled).
 
 ---
 

@@ -1,13 +1,10 @@
 const { parentPort } = require('worker_threads');
 const zlib = require('zlib');
-const fs = require('fs');
-const path = require('path');
 
-parentPort?.on('message', async ({ logData, filePath }) => {
+parentPort?.on('message', async ({ logData }) => {
     try {
-        const compressed = zlib.gzipSync(Buffer.from(logData));
-        await fs.promises.writeFile(filePath, compressed);
-        parentPort?.postMessage({ success: true, filePath });
+        const compressed = zlib.gzipSync(Buffer.isBuffer(logData) ? logData : Buffer.from(logData));
+        parentPort?.postMessage({ success: true, compressed });
     } catch (error) {
         parentPort?.postMessage({ success: false, error: error.message });
     }

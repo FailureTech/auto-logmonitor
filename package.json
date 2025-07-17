@@ -1,7 +1,7 @@
 {
   "name": "auto-logmonitor",
-  "version": "1.0.7",
-  "description": "A powerful, lightweight CLI tool for monitoring logs and sending them to APIs or Kafka. Perfect for production environments with high-volume log processing.",
+  "version": "1.2.5",
+  "description": "A robust, production-ready CLI for log monitoring with API/Kafka output, SMTP email alerts, disk-based queue with optional compression, dead-letter queue, metrics, and full config via file or environment variables. Recent improvements: SMTP alerting, disk queue compression, decompression before send, dead-letter queue, enhanced metrics, and reliability fixes.",
   "main": "simple-cli.js",
   "bin": {
     "auto-logmonitor": "simple-cli.js"
@@ -32,7 +32,11 @@
   "dependencies": {
     "axios": "^1.10.0",
     "chokidar": "^4.0.3",
+    "dotenv": "^17.2.0",
+    "express": "^5.1.0",
     "fs-extra": "^11.3.0",
+    "nodemailer": "^7.0.5",
+    "p-queue": "^8.1.0",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
@@ -48,6 +52,5 @@
   },
   "bugs": {
     "url": "https://github.com/FailureTech/auto-logmonitor/issues"
-  },
-  "homepage": "https://github.com/FailureTech/auto-logmonitor#readme"
+  }
 }

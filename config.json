@@ -12,8 +12,8 @@
   },
   "output": {
     "type": "api",
-    "apiEndpoint": "https://your-api.com/logs",
-    "apiKey": "your-api-key",
+    "apiEndpoint": "http://localhost:5000/",
+    "apiKey": "",
     "batchSize": 100,
     "batchTimeout": 5000
   },
@@ -27,11 +27,19 @@
     "maxPendingMessages": 1000,
     "consumerFilter": ""
   },
+  "smtp": {
+    "host": "smtp.example.com",
+    "port": 587,
+    "secure": false,
+    "user": "your@email.com",
+    "pass": "your-smtp-password",
+    "recipients": ["recipient1@email.com"]
+  },
   "performance": {
     "maxMemoryMB": 512,
     "maxQueueSize": 10000,
     "compression": true,
-    "retryAttempts": 3,
+    "retryAttempts": 5,
     "retryDelay": 1000,
     "queueDir": "./log-disk-queue",
     "concurrency": 10,
